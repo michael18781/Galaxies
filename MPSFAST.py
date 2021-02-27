@@ -8,8 +8,8 @@ plt.style.use('dark_background')
 G = 1
 
 
-class MultipleParticleSystem:
-    def __init__(self, mass1, mass2, number_test_particles, init_heavy_1, init_heavy_2, initial_particles):
+class MPSFAST:
+    def __init__(self, mass1, mass2, number_test_particles, init_heavy_1, init_heavy_2, particle_pos, particle_vels):
         # The value of our initial parameters for two heavy particles.
         self.initial_r_1, self.initial_v_1 = init_heavy_1[0], init_heavy_1[1]
         self.initial_r_2, self.initial_v_2 = init_heavy_2[0], init_heavy_2[1]
@@ -18,7 +18,9 @@ class MultipleParticleSystem:
         self.mass1, self.mass2 = mass1, mass2
         self.number_test_particles = number_test_particles
 
-        self.particle_initials = initial_particles
+        self.position_inits = np.concatenate((self.initial_r_1, self.initial_r_2, particle_pos.flatten()))
+        self.velocity_inits = np.concatenate((self.initial_v_1, self.initial_v_2, particle_vels.flatten()))
+        self.initials = np.concatenate((self.position_inits, self.velocity_inits))
 
         self.heavy_radius = 0.1
         self.test_radius = 0.01
@@ -28,8 +30,9 @@ class MultipleParticleSystem:
     def equations_of_motion(self, pos_and_vels, t):
         # Equations of motion which will be used by the odeint solver. pos_and_vels is our total state vector which
         # describes every particle in the system.
-        pos_heavy_1, vel_heavy_1 = pos_and_vels[:3], pos_and_vels[3:6]
-        pos_heavy_2, vel_heavy_2 = pos_and_vels[6:9], pos_and_vels[9:12]
+        positions, velocities = np.array_split(pos_and_vels, 2)
+        pos_heavy_1, vel_heavy_1 = positions[:3], velocities[:3]
+        pos_heavy_2, vel_heavy_2 = positions[3:6], velocities[3:6]
 
         r = sp.linalg.norm(pos_heavy_2 - pos_heavy_1) + self.softening_radius
 
@@ -45,56 +48,58 @@ class MultipleParticleSystem:
         pos_heavy_1_dot = vel_heavy_1
         pos_heavy_2_dot = vel_heavy_2
 
-        # Differential equations defined for the heavy masses.
-        heavy_derivatives = np.concatenate((pos_heavy_1_dot, vel_heavy_1_dot, pos_heavy_2_dot, vel_heavy_2_dot))
-
         # Creating an array which will house the differential equations governing the motion of the test particles.
-        particle_derivatives = np.zeros((2 * self.number_test_particles, 3))
+        particle_pos_dot = np.zeros((self.number_test_particles, 3))
+        particle_vel_dot = np.zeros((self.number_test_particles, 3))
 
         # Defining differential equations for test masses.
         for j in range(self.number_test_particles):
-            pos_particle = pos_and_vels[12 + 6 * j:15 + 6 * j]
-            vel_particle = pos_and_vels[15 + 6 * j:18 + 6 * j]
+            pos_particle = positions[3*j+6:3*j+9]
+            vel_particle = velocities[3*j+6:3*j+9]
+            print(vel_particle)
 
             # Distance to heavy masses including softening radius.
             r_to_1 = sp.linalg.norm(pos_particle - pos_heavy_1) + self.softening_radius
             r_to_2 = sp.linalg.norm(pos_particle - pos_heavy_2) + self.softening_radius
 
             if r_to_1 < self.heavy_radius + self.test_radius or r_to_2 < self.heavy_radius + self.test_radius:
-                particle_derivatives[2*j + 1] = np.array([0, 0, 0])
-                particle_derivatives[2 * j] = vel_particle
+                particle_vel_dot[j] = np.array([0, 0, 0])
+                particle_pos_dot[j] = vel_particle
             else:
                 # Derivatives of velocity
-                particle_derivatives[2*j + 1] = G * self.mass2 * (pos_heavy_2 - pos_particle) / (r_to_2 ** 3) + \
+                particle_vel_dot[j] = G * self.mass2 * (pos_heavy_2 - pos_particle) / (r_to_2 ** 3) + \
                                               G * self.mass1 * (pos_heavy_1 - pos_particle) / (r_to_1 ** 3)
                 # Derivatives of position
-                particle_derivatives[2 * j] = vel_particle
+                particle_pos_dot[j] = vel_particle
 
-        all_derivatives = heavy_derivatives
+        position_dervis = np.zeros((self.number_test_particles+2, 3))
+        velocity_dervis = np.zeros((self.number_test_particles + 2, 3))
 
-        for deriv in particle_derivatives:
-            # Still have an array of shape (2 * num particles, 3) so need to put these all in together using for loop
-            all_derivatives = np.concatenate((all_derivatives, deriv))
+        position_dervis[0], position_dervis[1] = pos_heavy_1_dot, pos_heavy_2_dot
+        velocity_dervis[0], velocity_dervis[1] = vel_heavy_1_dot, vel_heavy_2_dot
 
-        return all_derivatives
+        position_dervis[2:] = particle_pos_dot
+
+        velocity_dervis[2:] = particle_vel_dot
+
+        return np.concatenate((position_dervis.flatten(), velocity_dervis.flatten()))
 
     def produce_solution(self):
-        initial_conditions = np.array([self.initial_r_1, self.initial_v_1, self.initial_r_2, self.initial_v_2])
-        initial_conditions = np.concatenate((initial_conditions, self.particle_initials)).flatten()
-        t = np.arange(0, 200, 0.5)
-        sol = integrate.odeint(self.equations_of_motion, initial_conditions, t)
+        t = np.arange(0, 200, 0.1)
+        sol = integrate.odeint(self.equations_of_motion, self.initials, t)
         return sol
 
     def static_plot(self):
         # Test with first particle
         fig, ax = plt.subplots(figsize=(6, 4))
         solution = self.produce_solution()
+        positions = np.array_split(solution, 2)[0]
 
-        pos_heavy1 = solution[:, :3]
-        pos_heavy2 = solution[:, 6:9]
+        pos_heavy1 = positions[:, :3]
+        pos_heavy2 = positions[:, 3:6]
 
         for i in range(self.number_test_particles):
-            position = solution[:, 12 + 6 * i:15 + 6 * i]
+            position = positions[:, 3*i+6:3*i+9]
             ax.plot(position[:, 0], position[:, 1], color='red', lw=1)  # Full trajectory.
             ax.scatter(position[-1][0], position[-1][1], color='red', s=100)  # Last positions.
 
@@ -179,22 +184,24 @@ if __name__ == "__main__":
     initial_heavy_1 = np.array([[0, 0, 0], [0, 0, 0]])
     m1 = 1  # Initial heavy mass
     initial_heavy_2 = np.array([[20, -20, 0], [0, np.sqrt(2*G*m1/(20*1.41)), 0]])
-    m2 = 1  # Perturbing galaxy
+    m2 = 0  # Perturbing galaxy
 
     num_test = 5
 
     # Initialise the test particle positions and velocities array
-    particle_initials = np.zeros((2 * num_test, 3))
+    particle_pos = np.zeros((num_test, 3))
+    particle_vels = np.zeros((num_test, 3))
+
     for i in range(num_test):
         # Initialisation of test particle locations and velocities
         radius = (i+1)*(6-2)/num_test + 2
         theta = 0
         speed = np.sqrt(G * m1 / radius)
 
-        particle_initials[2 * i] = [radius * np.cos(theta), radius*np.sin(theta), 0]
+        particle_pos[i] = [radius * np.cos(theta), radius*np.sin(theta), 0]
 
-        particle_initials[2 * i + 1] = [-speed * np.sin(theta), speed*np.cos(theta), 0]
+        particle_vels[i] = [-speed * np.sin(theta), speed*np.cos(theta), 0]
 
-    system = MultipleParticleSystem(m1, m2, num_test, initial_heavy_1, initial_heavy_2, particle_initials)
-    system.produce_animation()
+    system = MPSFAST(m1, m2, num_test, initial_heavy_1, initial_heavy_2, particle_pos, particle_vels)
+    system.static_plot()
 
