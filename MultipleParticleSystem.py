@@ -3,6 +3,7 @@ import scipy.integrate as integrate
 import scipy as sp
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+import time
 
 plt.style.use('dark_background')
 G = 1
@@ -81,7 +82,7 @@ class MultipleParticleSystem:
     def produce_solution(self):
         initial_conditions = np.array([self.initial_r_1, self.initial_v_1, self.initial_r_2, self.initial_v_2])
         initial_conditions = np.concatenate((initial_conditions, self.particle_initials)).flatten()
-        t = np.arange(0, 200, 0.5)
+        t = np.arange(0, 1000, 0.5)
         sol = integrate.odeint(self.equations_of_motion, initial_conditions, t)
         return sol
 
@@ -181,7 +182,7 @@ if __name__ == "__main__":
     initial_heavy_2 = np.array([[20, -20, 0], [0, np.sqrt(2*G*m1/(20*1.41)), 0]])
     m2 = 1  # Perturbing galaxy
 
-    num_test = 5
+    num_test = 507
 
     # Initialise the test particle positions and velocities array
     particle_initials = np.zeros((2 * num_test, 3))
@@ -194,7 +195,8 @@ if __name__ == "__main__":
         particle_initials[2 * i] = [radius * np.cos(theta), radius*np.sin(theta), 0]
 
         particle_initials[2 * i + 1] = [-speed * np.sin(theta), speed*np.cos(theta), 0]
-
+    start_time = time.time()
     system = MultipleParticleSystem(m1, m2, num_test, initial_heavy_1, initial_heavy_2, particle_initials)
-    system.produce_animation()
+    system.produce_solution()
+    print("--- %s seconds ---" % (time.time() - start_time))
 
