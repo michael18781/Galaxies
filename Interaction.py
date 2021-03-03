@@ -86,8 +86,3 @@ class Interaction:
         plt.show()
 
 
-if __name__ == "__main__":
-    newInt = Interaction()
-    newInt.plot_orbits()
-
-

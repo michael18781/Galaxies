@@ -3,14 +3,11 @@ import scipy.integrate as integrate
 import scipy as sp
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-import time
-
 plt.style.use('dark_background')
-G = 1
 
 
 class MPSFAST:
-    def __init__(self, mass1, mass2, number_test_particles, init_heavy_1, init_heavy_2, particle_pos, particle_vels):
+    def __init__(self, G, mass1, mass2, number_test_particles, init_heavy_1, init_heavy_2, particle_pos, particle_vels):
         # The value of our initial parameters for two heavy particles.
         self.initial_r_1, self.initial_v_1 = init_heavy_1[0], init_heavy_1[1]
         self.initial_r_2, self.initial_v_2 = init_heavy_2[0], init_heavy_2[1]
@@ -25,6 +22,7 @@ class MPSFAST:
 
         self.heavy_radius = 0.1
         self.test_radius = 0.01
+        self.G = G
         self.softening_radius = 0.01
         self.collision = False
 
@@ -40,18 +38,15 @@ class MPSFAST:
         if r < self.heavy_radius * 2:
             # Heavy masses have collided, combine into mass 1 and continue.
             self.collision = True
+            self.mass1 += self.mass2
             self.mass2 = 0
 
         # Computing the rate of change of velocity and position for the heavy masses in vector form.
-        vel_heavy_1_dot = G * self.mass2 * (pos_heavy_2 - pos_heavy_1) / (r ** 3) if self.mass1 != 0 else np.array([0, 0, 0])
-        vel_heavy_2_dot = G * self.mass1 * (pos_heavy_1 - pos_heavy_2) / (r ** 3) if self.mass2 != 0 else np.array([0, 0, 0])
+        vel_heavy_1_dot = self.G * self.mass2 * (pos_heavy_2 - pos_heavy_1) / (r ** 3) if self.mass1 != 0 else np.array([0, 0, 0])
+        vel_heavy_2_dot = self.G * self.mass1 * (pos_heavy_1 - pos_heavy_2) / (r ** 3) if self.mass2 != 0 else np.array([0, 0, 0])
 
         pos_heavy_1_dot = vel_heavy_1
         pos_heavy_2_dot = vel_heavy_2
-
-        # Creating an array which will house the differential equations governing the motion of the test particles.
-        particle_pos_dot = np.zeros((self.number_test_particles, 3))
-        particle_vel_dot = np.zeros((self.number_test_particles, 3))
 
         particle_positions = np.split(positions[6:], positions[6:].size//3)
         particle_velocities = np.split(velocities[6:], velocities[6:].size//3)
@@ -61,26 +56,24 @@ class MPSFAST:
         r_to_2 = np.linalg.norm(particle_positions - pos_heavy_2, axis=1, keepdims=True) + self.softening_radius
 
         # Derivatives of velocity
-        yes = G * self.mass2 * (pos_heavy_2 - particle_positions)
-        n0 = G * self.mass1 * (pos_heavy_1 - particle_positions)
-        particle_vel_dot = np.divide(yes, r_to_2 ** 3) \
-                           + np.divide(n0, r_to_1 ** 3)
+        particle_vel_dot = np.divide(self.G * self.mass2 * (pos_heavy_2 - particle_positions), r_to_2 ** 3) \
+                           + np.divide(self.G * self.mass1 * (pos_heavy_1 - particle_positions), r_to_1 ** 3)
         # Derivatives of position
         particle_pos_dot = particle_velocities
 
-        position_dervis = np.zeros((self.number_test_particles+2, 3))
-        velocity_dervis = np.zeros((self.number_test_particles + 2, 3))
+        position_derivs = np.zeros((self.number_test_particles+2, 3))
+        velocity_derivs = np.zeros((self.number_test_particles + 2, 3))
 
-        position_dervis[0], position_dervis[1] = pos_heavy_1_dot, pos_heavy_2_dot
-        velocity_dervis[0], velocity_dervis[1] = vel_heavy_1_dot, vel_heavy_2_dot
+        position_derivs[0], position_derivs[1] = pos_heavy_1_dot, pos_heavy_2_dot
+        velocity_derivs[0], velocity_derivs[1] = vel_heavy_1_dot, vel_heavy_2_dot
 
-        position_dervis[2:] = particle_pos_dot
-        velocity_dervis[2:] = particle_vel_dot
+        position_derivs[2:] = particle_pos_dot
+        velocity_derivs[2:] = particle_vel_dot
 
-        return np.concatenate((position_dervis.flatten(), velocity_dervis.flatten()))
+        return np.concatenate((position_derivs.flatten(), velocity_derivs.flatten()))
 
     def produce_solution(self):
-        t = np.arange(0, 1000, 0.5)
+        t = np.arange(0, 100000, 0.5)
         sol = integrate.odeint(self.equations_of_motion, self.initials, t)
         return sol
 
@@ -118,9 +111,9 @@ class MPSFAST:
         plt.show()
 
     def animate(self, i, lines, scatters, data):
-        # for (j, line) in enumerate(lines):
-        # i.e. even line index so it must be a trajectory plot
-        # line.set_data(data[j][:i + 1][:, 0], data[j][:i + 1][:, 1])
+        for (j, line) in enumerate(lines):
+            # i.e. even line index so it must be a trajectory plot
+            line.set_data(data[j][:i + 1][:, 0], data[j][:i + 1][:, 1])
 
         for (j, scat) in enumerate(scatters):
             scat.set_data(data[j][:i + 1][:, 0][-1], data[j][:i + 1][:, 1][-1])
@@ -130,7 +123,7 @@ class MPSFAST:
     def produce_animation(self):
         sol = self.produce_solution()
         fig = plt.figure(figsize=(10, 10))
-        ax = plt.axes(xlim=(-50, 50), ylim=(-50, 50))
+        ax = plt.axes(xlim=(-2e8, 2e8), ylim=(-2e8, 2e8))
 
         ax.set_xlabel('$x$')
         ax.set_ylabel('$y$')
@@ -142,11 +135,11 @@ class MPSFAST:
 
         data1 = sol[:, :3]
         data.append(data1)
-        data2 = sol[:, 6:9]
+        data2 = sol[:, 3:6]
         data.append(data2)
 
         for i in range(self.number_test_particles):
-            particle_data = sol[:, 12 + 6 * i:15 + 6 * i]
+            particle_data = sol[:, 3*i+6:3*i+9]
             data.append(particle_data)
 
         heavy1 = ax.plot([], [], color='blue', lw=0.5)[0]
@@ -173,32 +166,3 @@ class MPSFAST:
 
         ani = FuncAnimation(fig, self.animate, fargs=(lines, scatters, data), frames=10000, interval=1000/fps, blit=True)
         plt.show()
-
-
-if __name__ == "__main__":
-    initial_heavy_1 = np.array([[0, 0, 0], [0, 0, 0]])
-    m1 = 1  # Initial heavy mass
-    initial_heavy_2 = np.array([[0, 0, 0], [0, 0, 0]])
-    m2 = 0  # Perturbing galaxy
-
-    num_test = 1000
-
-    # Initialise the test particle positions and velocities array
-    particle_pos = np.zeros((num_test, 3))
-    particle_vels = np.zeros((num_test, 3))
-
-    for i in range(num_test):
-        # Initialisation of test particle locations and velocities
-        radius = (i+1)*(6-2)/num_test + 2
-        theta = 0
-        speed = np.sqrt(G * m1 / radius)
-
-        particle_pos[i] = [radius * np.cos(theta), radius*np.sin(theta), 0]
-
-        particle_vels[i] = [-speed * np.sin(theta), speed*np.cos(theta), 0]
-
-    start_time = time.time()
-    system = MPSFAST(m1, m2, num_test, initial_heavy_1, initial_heavy_2, particle_pos, particle_vels)
-    system.produce_solution()
-    print("--- %s seconds ---" % (time.time() - start_time))
-
