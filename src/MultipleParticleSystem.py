@@ -40,9 +40,8 @@ class MultipleParticleSystem:
             self.mass2 = 0
 
         # Computing the rate of change of velocity and position for the heavy masses in vector form.
-        vel_heavy_1_dot = G * self.mass2 * (pos_heavy_2 - pos_heavy_1) / (r ** 3) if self.mass1 != 0 else np.array([0, 0, 0])
-        vel_heavy_2_dot = G * self.mass1 * (pos_heavy_1 - pos_heavy_2) / (r ** 3) if self.mass2 != 0 else np.array([0, 0, 0])
-
+        vel_heavy_1_dot = G * self.mass2 * (pos_heavy_2 - pos_heavy_1) / (r ** 3)
+        vel_heavy_2_dot = G * self.mass1 * (pos_heavy_1 - pos_heavy_2) / (r ** 3)
         pos_heavy_1_dot = vel_heavy_1
         pos_heavy_2_dot = vel_heavy_2
 
@@ -119,11 +118,12 @@ class MultipleParticleSystem:
         plt.show()
 
     def animate(self, i, lines, scatters, data):
-        # for (j, line) in enumerate(lines):
-        # i.e. even line index so it must be a trajectory plot
-        # line.set_data(data[j][:i + 1][:, 0], data[j][:i + 1][:, 1])
+        for (j, line) in enumerate(lines):
+            # i.e. Setting our trajectory plot
+            line.set_data(data[j][:i + 1][:, 0], data[j][:i + 1][:, 1])
 
         for (j, scat) in enumerate(scatters):
+            # Setting scatter plot for the end points of particles
             scat.set_data(data[j][:i + 1][:, 0][-1], data[j][:i + 1][:, 1][-1])
 
         return lines+scatters
@@ -170,8 +170,7 @@ class MultipleParticleSystem:
             lines.append(particle_line)
             scatters.append(particle_blob)
 
-        fps = 60
-
-        ani = FuncAnimation(fig, self.animate, fargs=(lines, scatters, data), frames=10000, interval=1000/fps, blit=True)
+        # Produce animation at 10fps
+        ani = FuncAnimation(fig, self.animate, fargs=(lines, scatters, data), frames=10000, interval=1000/10, blit=True)
         plt.show()
 

@@ -8,14 +8,18 @@ plt.style.use('dark_background')
 
 
 class MpsFast:
-    def __init__(self, scaling_constants, heavy_masses, number_test_particles, init_heavy_1, init_heavy_2, particle_pos,
-                 particle_vels):
-        # Factors to convert equations of motion.
-        g, mass_mimas, r_mimas, v_mimas, period_mimas = \
-            scaling_constants[0], scaling_constants[1], scaling_constants[2], scaling_constants[3], scaling_constants[4]
+    def __init__(self, scaling_constants,heavy_masses, init_heavy_1, init_heavy_2, particle_pos, particle_vels,
+                 number_test_particles, duration, steps):
 
-        alpha_1 = g * period_mimas * mass_mimas / ((r_mimas ** 2) * v_mimas)
-        alpha_2 = v_mimas * period_mimas / r_mimas
+        # Factors to convert equations of motion.
+        g, mass, r, v, period = scaling_constants[0],\
+                                scaling_constants[1],\
+                                scaling_constants[2],\
+                                scaling_constants[3],\
+                                scaling_constants[4]
+
+        alpha_1 = g * period * mass / ((r ** 2) * v)
+        alpha_2 = v * period / r
 
         self.scaling_constants = scaling_constants
         self.normalisation = [alpha_1, alpha_2]
@@ -34,6 +38,8 @@ class MpsFast:
         # Other parameters that might be needed.
         self.heavy_radius = 0.1
         self.softening_radius = 0.001
+        self.duration = duration
+        self.steps = steps
         self.collision = False
 
     def equations_of_motion(self, pos_and_vels, t):
@@ -83,16 +89,16 @@ class MpsFast:
         position_derivs[2:] = particle_pos_dot
         velocity_derivs[2:] = particle_vel_dot
 
-        print(f"Working...{t:.2f}")
+        print(f"Working...{t:.2f}...periods complete.")
         return np.concatenate((position_derivs.flatten(), velocity_derivs.flatten()))
 
     def produce_solution(self):
-        t = np.arange(0, 10, 0.01)
+        t = np.arange(0, self.duration, self.duration / self.steps)
         sol = integrate.odeint(self.equations_of_motion, self.initials, t)
-        file_dir = os.path.dirname(os.path.realpath('__file__'))
-        filename = os.path.join(file_dir, '../data/sol.csv')
-        filename = os.path.abspath(os.path.realpath(filename))
-        np.savetxt(filename, sol, delimiter=',')
+        # file_dir = os.path.dirname(os.path.realpath('__file__'))
+        # filename = os.path.join(file_dir, '../data/sol.csv')
+        # filename = os.path.abspath(os.path.realpath(filename))
+        # np.savetxt(filename, sol, delimiter=',')
         return sol
 
     def static_plot(self):
@@ -106,8 +112,8 @@ class MpsFast:
 
         for i in range(self.number_test_particles):
             position = positions[:, 3*i+6:3*i+9]
-            ax.plot(position[:, 0], position[:, 1], color='red', lw=1)  # Full trajectory.
-            ax.scatter(position[-1][0], position[-1][1], color='red', s=100)  # Last positions.
+            ax.plot(position[:, 0][-20:], position[:, 1][-20:], color='red', lw=1)  # Full trajectory.
+            ax.plot(position[-1][0], position[-1][1], marker="o", color='red', markersize=2)  # Last positions.
 
         # Full trajectory.
         ax.plot(pos_heavy1[:, 0], pos_heavy1[:, 1], color='blue', lw=0.2)
@@ -126,12 +132,15 @@ class MpsFast:
         ax.set_xlabel('$x$')
         ax.set_ylabel('$y$')
         ax.set_title('Trajectories for all particles')
+
+        # Saving plot to file
         file_dir = os.path.dirname(os.path.realpath('__file__'))
         filename = os.path.join(file_dir, '../data/static_plot.png')
         filename = os.path.abspath(os.path.realpath(filename))
         plt.savefig(filename, dpi=600)
 
     def animate(self, i, lines, scatters, data):
+        # Function to animate the solution
         for (j, line) in enumerate(lines):
             # i.e. even line index so it must be a trajectory plot
             line.set_data(data[j][:i + 1][:, 0], data[j][:i + 1][:, 1])
@@ -144,7 +153,7 @@ class MpsFast:
         # Extracting solution and setting up plots.
         sol = self.produce_solution()
         fig = plt.figure(figsize=(10, 10))
-        ax = plt.axes(xlim=(-2, 2), ylim=(-2, 2))
+        ax = plt.axes(xlim=(-10, 10), ylim=(-10, 10))
         ax.set_xlabel('$x$')
         ax.set_ylabel('$y$')
         ax.set_title('Animating the trajectories of all particles, units of 1000km')
@@ -185,9 +194,9 @@ class MpsFast:
             scatters.append(particle_blob)
 
         # Producing the animation and saving to directory.
-        print("Data collected...")
         anim = FuncAnimation(fig, self.animate, fargs=(lines, scatters, data), interval=1, blit=True)
-        print("Saving animation...")
+
+        # Saving the animation
         file_dir = os.path.dirname(os.path.realpath('__file__'))
         filename = os.path.join(file_dir, '../data/animate_solution.gif')
         filename = os.path.abspath(os.path.realpath(filename))
